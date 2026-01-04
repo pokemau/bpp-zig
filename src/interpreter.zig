@@ -20,8 +20,19 @@ pub const Interpreter = struct {
         defer lexer.deinit();
         try lexer.tokenize();
 
+        // for (lexer.tokens.items) |t| {
+        //     print("{}-{any}\n", .{t.type, t.literal});
+        // }
         for (lexer.tokens.items) |t| {
-            print("{}\n", .{t.type});
+            print("{} - ", .{t.type});
+            switch (t.literal) {
+                .none => print("(no literal)\n", .{}),
+                .number => |num| print("{d}\n", .{num}),
+                .string => |str| print("\"{s}\"\n", .{str}),
+                .char => |ch| print("'{c}'\n", .{ch}),
+                .boolean => |b| print("{}\n", .{b}),
+                .ident => |i| print("{s}\n", .{i}),
+            }
         }
 
         // var parser = Parser.init(self.allocator);

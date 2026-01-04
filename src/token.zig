@@ -4,6 +4,16 @@ const print = std.debug.print;
 pub const Token = struct {
     type: TokenType,
     line: usize,
+    literal: TokenLiteral,
+};
+
+pub const TokenLiteral = union(enum) {
+    none,
+    number: f64,
+    string: []const u8,
+    char: u8,
+    boolean: bool,
+    ident: []const u8,
 };
 
 pub const TokenType = enum {

@@ -3,8 +3,7 @@ const print = std.debug.print;
 
 const Token = @import("./token.zig").Token;
 const TokenType = @import("./token.zig").TokenType;
-
-// TODO: store token value where it appliess
+const TokenLiteral = @import("./token.zig").TokenLiteral;
 
 pub const Lexer = struct {
     allocator: std.mem.Allocator,
@@ -36,24 +35,23 @@ pub const Lexer = struct {
                 '\r',
                 => {},
                 '\n' => self.line += 1,
-                '{' => try addToken(self, .LEFT_BRACE),
-                '}' => try addToken(self, .RIGHT_BRACE),
-                '[' => try addToken(self, .LEFT_BRACKET),
-                ']' => try addToken(self, .RIGHT_BRACKET),
-                ',' => try addToken(self, .COMMA),
-                '.' => try addToken(self, .DOT),
-                ';' => try addToken(self, .SEMICOLON),
-                ':' => try addToken(self, .COLON),
-                '&' => try addToken(self, .AMPERSAND),
-                '$' => try addToken(self, .DOLLAR),
-                '#' => try addToken(self, .HASH),
-                '(' => try addToken(self, .LEFT_PAREN),
-                ')' => try addToken(self, .RIGHT_PAREN),
-                '*' => try addToken(self, .STAR),
-                '/' => try addToken(self, .SLASH),
-                '%' => try addToken(self, .MODULO),
-                '+' => try addToken(self, .PLUS),
-                // TODO: scan for comments
+                '{' => try addToken(self, .LEFT_BRACE, .none),
+                '}' => try addToken(self, .RIGHT_BRACE, .none),
+                '[' => try addToken(self, .LEFT_BRACKET, .none),
+                ']' => try addToken(self, .RIGHT_BRACKET, .none),
+                ',' => try addToken(self, .COMMA, .none),
+                '.' => try addToken(self, .DOT, .none),
+                ';' => try addToken(self, .SEMICOLON, .none),
+                ':' => try addToken(self, .COLON, .none),
+                '&' => try addToken(self, .AMPERSAND, .none),
+                '$' => try addToken(self, .DOLLAR, .none),
+                '#' => try addToken(self, .HASH, .none),
+                '(' => try addToken(self, .LEFT_PAREN, .none),
+                ')' => try addToken(self, .RIGHT_PAREN, .none),
+                '*' => try addToken(self, .STAR, .none),
+                '/' => try addToken(self, .SLASH, .none),
+                '%' => try addToken(self, .MODULO, .none),
+                '+' => try addToken(self, .PLUS, .none),
                 '-' => {
                     _ = advance(self);
                     if (match(self, '-')) {
@@ -61,25 +59,33 @@ pub const Lexer = struct {
                             _ = advance(self);
                         }
                     } else {
-                        try addToken(self, .MINUS);
+                        try addToken(self, .MINUS, .none);
                     }
                 },
                 '=' => {
                     _ = advance(self);
-                    try addToken(self, if (match(self, '=')) .EQUAL_EQUAL else .EQUAL);
+                    try addToken(
+                        self,
+                        if (match(self, '=')) .EQUAL_EQUAL else .EQUAL,
+                        .none,
+                    );
                 },
                 '>' => {
                     _ = advance(self);
-                    try addToken(self, if (match(self, '=')) .GREATER_EQUAL else .GREATER);
+                    try addToken(
+                        self,
+                        if (match(self, '=')) .GREATER_EQUAL else .GREATER,
+                        .none,
+                    );
                 },
                 '<' => {
                     _ = advance(self);
                     if (match(self, '=')) {
-                        try addToken(self, .LESS_EQUAL);
+                        try addToken(self, .LESS_EQUAL, .none);
                     } else if (match(self, '>')) {
-                        try addToken(self, .NOT_EQUAL);
+                        try addToken(self, .NOT_EQUAL, .none);
                     } else {
-                        try addToken(self, .LESS);
+                        try addToken(self, .LESS, .none);
                     }
                 },
                 '\'' => {
@@ -103,21 +109,23 @@ pub const Lexer = struct {
 
     fn scanChar(self: *Lexer) !void {
         _ = advance(self);
+
         if (!isAtEnd(self) and peek(self) == '\'') {
-            try addToken(self, .CHAR);
+            try addToken(self, .CHAR, .none);
             return;
         }
 
         if (isAtEnd(self) or peek(self) == '\n') {
-            try addToken(self, .SINGLE_QUOTE);
+            try addToken(self, .SINGLE_QUOTE, .none);
             return;
         }
 
+        const char = peek(self);
         _ = advance(self);
         if (!isAtEnd(self) and peek(self) == '\'') {
-            try addToken(self, .CHAR);
+            try addToken(self, .CHAR, .{ .char = char });
         } else {
-            try addToken(self, .SINGLE_QUOTE);
+            try addToken(self, .SINGLE_QUOTE, .none);
         }
     }
 
@@ -126,9 +134,16 @@ pub const Lexer = struct {
         while (!isAtEnd(self) and (std.ascii.isDigit(peek(self)))) {
             _ = advance(self);
         }
+
+        if (!isAtEnd(self) and peek(self) == '.' and std.ascii.isDigit(peekNext(self))) {
+            _ = advance(self);
+            while (std.ascii.isDigit(peek(self)))
+                _ = advance(self);
+        }
+
         const text = self.source[start..self.current];
-        _ = text;
-        try addToken(self, .NUMBER);
+        const val = std.fmt.parseFloat(f64, text) catch 0.0;
+        try addToken(self, .NUMBER, .{ .number = val });
     }
 
     fn scanString(self: *Lexer) !void {
@@ -141,14 +156,14 @@ pub const Lexer = struct {
         if (!isAtEnd(self) and peek(self) == '\"') {
             const text = self.source[start + 1 .. self.current];
             if (std.mem.eql(u8, text, "DILI")) {
-                try addToken(self, .TRUE);
+                try addToken(self, .TRUE, .{ .boolean = false });
             } else if (std.mem.eql(u8, text, "OO")) {
-                try addToken(self, .FALSE);
+                try addToken(self, .FALSE, .{ .boolean = true });
             } else {
-                try addToken(self, .STRING);
+                try addToken(self, .STRING, .{ .string = text });
             }
         } else {
-            try addToken(self, .DOUBLE_QUOTE);
+            try addToken(self, .DOUBLE_QUOTE, .none);
         }
     }
 
@@ -158,9 +173,75 @@ pub const Lexer = struct {
             _ = advance(self);
         }
         const text = self.source[start..self.current];
-        _ = text;
-        // TODO: add check for ALANG, ALANG SA etc...
-        try addToken(self, .IDENTIFIER);
+
+        if (try matchMultiWordKeyword(self, text)) |res| {
+            try addToken(self, res, .none);
+            return;
+        }
+        const token_type = getKeywordType(text) orelse .IDENTIFIER;
+        try addToken(self, token_type, .{ .ident = text });
+    }
+
+    fn matchMultiWordKeyword(self: *Lexer, first_word: []const u8) !?TokenType {
+        const curr_pos = self.current;
+        const curr_line = self.line;
+
+        while (!isAtEnd(self) and (peek(self) == ' ' or peek(self) == '\t')) {
+            _ = advance(self);
+        }
+
+        if (isAtEnd(self) or !std.ascii.isAlphabetic(peek(self))) {
+            self.current = curr_pos;
+            self.line = curr_line;
+            return null;
+        }
+        const second_start = self.current;
+        while (!isAtEnd(self) and (std.ascii.isAlphanumeric(peek(self)) or peek(self) == '_')) {
+            _ = advance(self);
+        }
+        const second_word = self.source[second_start..self.current];
+
+        if (std.mem.eql(u8, first_word, "KUNG")) {
+            if (std.mem.eql(u8, second_word, "WALA")) {
+                return .KUNG_WALA;
+            } else if (std.mem.eql(u8, second_word, "DILI")) {
+                return .KUNG_DILI;
+            }
+        } else if (std.mem.eql(u8, first_word, "ALANG")) {
+            if (std.mem.eql(u8, second_word, "SA")) {
+                return .ALANG_SA;
+            }
+        }
+
+        self.current = curr_pos;
+        self.line = curr_line;
+        return null;
+    }
+
+    fn getKeywordType(text: []const u8) ?TokenType {
+        const keywords = std.StaticStringMap(TokenType).initComptime(.{
+            .{ "SUGOD", .SUGOD },
+            .{ "KATAPUSAN", .KATAPUSAN },
+            .{ "MUGNA", .MUGNA },
+            .{ "IPAKITA", .IPAKITA },
+            .{ "DAWAT", .DAWAT },
+            .{ "KUNG", .KUNG },
+            .{ "WALA", .WALA },
+            .{ "PULI", .PULI },
+            .{ "KASO", .KASO },
+            .{ "PUNDOK", .PUNDOK },
+
+            .{ "NUMERO", .NUMERO },
+            .{ "LETRA", .LETRA },
+            .{ "TIPIK", .TIPIK },
+            .{ "TINUOD", .TINUOD },
+
+            .{ "UG", .UG },
+            .{ "O", .O },
+            .{ "DILI", .DILI },
+        });
+
+        return keywords.get(text);
     }
 
     fn advance(self: *Lexer) u8 {
@@ -198,7 +279,14 @@ pub const Lexer = struct {
         return true;
     }
 
-    fn addToken(self: *Lexer, t: TokenType) !void {
-        try self.tokens.append(self.allocator, .{ .type = t, .line = self.line });
+    fn addToken(self: *Lexer, t: TokenType, literal: TokenLiteral) !void {
+        try self.tokens.append(
+            self.allocator,
+            .{
+                .type = t,
+                .line = self.line,
+                .literal = literal,
+            },
+        );
     }
 };
