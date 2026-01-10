@@ -23,17 +23,25 @@ pub const Interpreter = struct {
         // for (lexer.tokens.items) |t| {
         //     print("{}-{any}\n", .{t.type, t.literal});
         // }
-        for (lexer.tokens.items) |t| {
-            print("{} - ", .{t.type});
-            switch (t.literal) {
-                .none => print("(no literal)\n", .{}),
-                .number => |num| print("{d}\n", .{num}),
-                .string => |str| print("\"{s}\"\n", .{str}),
-                .char => |ch| print("'{c}'\n", .{ch}),
-                .boolean => |b| print("{}\n", .{b}),
-                .ident => |i| print("{s}\n", .{i}),
-            }
-        }
+
+        // for (lexer.tokens.items) |t| {
+        //     print("{} - ", .{t.type});
+        //     switch (t.literal) {
+        //         .none => print("(no literal)\n", .{}),
+        //         .number => |num| print("{d}\n", .{num}),
+        //         .string => |str| print("\"{s}\"\n", .{str}),
+        //         .char => |ch| print("'{c}'\n", .{ch}),
+        //         .boolean => |b| print("{}\n", .{b}),
+        //         .ident => |i| print("{s}\n", .{i}),
+        //     }
+        // }
+
+        var parser = Parser.init(self.allocator);
+        defer parser.deinit();
+        const program_node = try parser.parse(lexer.tokens.items);
+        _ = program_node;
+
+        // print("{any}\n", .{program_node.program.statements});
 
         // var parser = Parser.init(self.allocator);
         // defer parser.deinit();
@@ -42,13 +50,5 @@ pub const Interpreter = struct {
         // defer self.lexer.arena.deinit();
         // const tokens = try self.lexer.tokenize(source);
         // print("Tokens len: {any}\n", .{tokens});
-    }
-
-    pub fn testt(self: *Interpreter, file_content: []const u8) ![]Token {
-        const tokens = try self.lexer.tokenize(file_content);
-        defer self.lexer.arena.deinit();
-
-        print("Tokens len: {}\n", .{tokens.len});
-        return tokens;
     }
 };

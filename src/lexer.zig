@@ -8,17 +8,17 @@ const TokenLiteral = @import("./token.zig").TokenLiteral;
 pub const Lexer = struct {
     allocator: std.mem.Allocator,
     line: u32,
+    current: usize,
     tokens: std.ArrayList(Token),
-    current: u32,
     source: []const u8,
 
     pub fn init(allocator: std.mem.Allocator, source: []const u8) Lexer {
         return .{
             .allocator = allocator,
-            .line = 0,
-            .current = 0,
             .tokens = .empty,
             .source = source,
+            .line = 0,
+            .current = 0,
         };
     }
 
@@ -34,7 +34,10 @@ pub const Lexer = struct {
                 '\t',
                 '\r',
                 => {},
-                '\n' => self.line += 1,
+                '\n' => {
+                    try addToken(self, .NEWLINE, .none);
+                    self.line += 1;
+                },
                 '{' => try addToken(self, .LEFT_BRACE, .none),
                 '}' => try addToken(self, .RIGHT_BRACE, .none),
                 '[' => try addToken(self, .LEFT_BRACKET, .none),
