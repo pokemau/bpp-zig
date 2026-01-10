@@ -13,7 +13,7 @@ pub const TokenLiteral = union(enum) {
     string: []const u8,
     char: u8,
     boolean: bool,
-    ident: []const u8,
+    identifier: []const u8,
 };
 
 pub const TokenType = enum {

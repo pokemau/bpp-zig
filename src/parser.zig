@@ -5,8 +5,9 @@ const Token = @import("./token.zig").Token;
 const TokenType = @import("./token.zig").TokenType;
 const AstNode = @import("./ast.zig").AstNode;
 
+const ast = @import("./ast.zig");
 
-// TODO: implement error handling when parsing
+// TODO: fix anyerror
 
 pub const Parser = struct {
     arena: std.heap.ArenaAllocator,
@@ -53,6 +54,8 @@ pub const Parser = struct {
             advance(self);
         }
 
+        // TODO: add check that last token is .KATAPUSAN
+
         const r = try statements.toOwnedSlice(aa);
 
         const program_node = try createNode(self, .{
@@ -70,11 +73,16 @@ pub const Parser = struct {
 
         switch (token.type) {
             .MUGNA => return parseVarDecl(self),
+            // .KATAPUSAN => {
+            //     while (!self.isAtEnd()) {
+            //         self.advance();
+            //     }
+            //     self.prev();
+            // },
             else => {},
         }
 
         // TODO:
-        // var decl
         // ipakita
         // identifier
         // alang sa
@@ -87,7 +95,6 @@ pub const Parser = struct {
     }
 
     fn parseVarDecl(self: *Parser) !*AstNode {
-        // TODO: not done
         self.advance();
 
         print("PARSE VAR DECL\n", .{});
@@ -105,30 +112,55 @@ pub const Parser = struct {
 
         const aa = self.arena.allocator();
         var names: std.ArrayList(Token) = .empty;
-        // var inits: std.ArrayList(?*AstNode) = .empty;
+        var inits: std.ArrayList(?*AstNode) = .empty;
 
         while (!self.match(.NEWLINE)) {
             const name_tok = self.peek();
+
+            print("==={}===\n", .{name_tok.type});
+
             if (name_tok.type != .IDENTIFIER) {
+                self.printCurrTok();
                 print("ERROR: EXPECT VAR NAME\n", .{});
+                break;
             }
 
             try names.append(aa, name_tok);
             self.advance();
+
+            if (self.match(.EQUAL)) {
+                self.advance();
+                const init_var = try self.parseExpression();
+                try inits.append(aa, init_var);
+            } else {
+                try inits.append(aa, null);
+            }
+
+            if (self.match(.COMMA)) {
+                self.advance();
+                continue;
+            }
+            // break;
+            // self.advance();
         }
 
-        for (names.items) |n| {
-            print("{}\n", .{n});
-        }
+        const res = try self.createNode(.{ .var_decl = .{
+            .d_type = d_type,
+            .names = names.items,
+            .inits = inits.items,
+            .name_count = names.items.len,
+        } });
 
-        return try self.createNode(.{ .literal = .{ .token = t } });
+        ast.printAstNode(res, 0);
+
+        return res;
     }
 
-    fn parseExpression(self: *Parser) !*AstNode {
+    fn parseExpression(self: *Parser) anyerror!*AstNode {
         return self.parseBinary(0);
     }
 
-    fn parseBinary(self: *Parser, min_prec: i32) !*AstNode {
+    fn parseBinary(self: *Parser, min_prec: i32) anyerror!*AstNode {
         var left = try self.parseUnary();
 
         while (!self.isAtEnd()) {
@@ -146,9 +178,10 @@ pub const Parser = struct {
                 .right = right,
             } });
         }
+        return left;
     }
 
-    fn parseUnary(self: *Parser) !*AstNode {
+    fn parseUnary(self: *Parser) anyerror!*AstNode {
         const token = self.peek();
 
         if (token.type == .MINUS or token.type == .PLUS or token.type == .DILI) {
@@ -165,7 +198,7 @@ pub const Parser = struct {
         return self.parsePrimary();
     }
 
-    fn parsePrimary(self: *Parser) !*AstNode {
+    fn parsePrimary(self: *Parser) anyerror!*AstNode {
         const token = self.peek();
 
         switch (token.type) {
@@ -176,13 +209,12 @@ pub const Parser = struct {
 
             .IDENTIFIER => {
                 self.advance();
-                return self.createNode(.{ .variabl = .{ .name = token } });
+                return self.createNode(.{ .variable = .{ .name = token } });
             },
             .LEFT_PAREN => {
                 self.advance();
                 const expr = try self.parseExpression();
-                if (!self.match(.RIGHT_PAREN)) {
-                }
+                if (!self.match(.RIGHT_PAREN)) {}
                 self.advance();
                 return expr;
             },
@@ -195,7 +227,7 @@ pub const Parser = struct {
     }
 
     fn expect(self: *Parser, t: TokenType) bool {
-        if (self.tokens[self.current].type != t) {
+        if (self.peek().type != t) {
             print("ERROR: Expected [{}] Actual [{}]\n", .{ t, self.tokens[self.current].type });
             return false;
         }
@@ -213,6 +245,10 @@ pub const Parser = struct {
 
     fn advance(self: *Parser) void {
         self.current += 1;
+    }
+
+    fn prev(self: *Parser) void {
+        self.current -= 1;
     }
 
     fn printCurrTok(self: *Parser) void {
@@ -257,14 +293,17 @@ pub const Parser = struct {
     }
 
     fn getPrecedence(t: TokenType) i32 {
-        switch (t) {
+        return switch (t) {
             .STAR, .SLASH, .MODULO => 3,
             .PLUS, .MINUS => 2,
             .LESS, .GREATER, .LESS_EQUAL, .GREATER_EQUAL, .EQUAL_EQUAL, .NOT_EQUAL => 1,
             .UG, .O => 0,
             else => -1,
-        }
+        };
     }
+
+    // TODO: implement error handling when parsing
+    fn addError() void {}
 };
 
 pub const ParserError = struct {

@@ -15,7 +15,6 @@ pub const Interpreter = struct {
     }
 
     pub fn run(self: *Interpreter, source: []const u8) !void {
-        print("RUNNING INTERPRETER\n", .{});
         var lexer = Lexer.init(self.allocator, source);
         defer lexer.deinit();
         try lexer.tokenize();
@@ -32,7 +31,7 @@ pub const Interpreter = struct {
         //         .string => |str| print("\"{s}\"\n", .{str}),
         //         .char => |ch| print("'{c}'\n", .{ch}),
         //         .boolean => |b| print("{}\n", .{b}),
-        //         .ident => |i| print("{s}\n", .{i}),
+        //         .identifier => |i| print("{s}\n", .{i}),
         //     }
         // }
 

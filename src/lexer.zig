@@ -67,19 +67,22 @@ pub const Lexer = struct {
                 },
                 '=' => {
                     _ = advance(self);
-                    try addToken(
-                        self,
-                        if (match(self, '=')) .EQUAL_EQUAL else .EQUAL,
-                        .none,
-                    );
+                    if (match(self, '=')) {
+                        try self.addToken(.EQUAL_EQUAL, .none);
+                    } else {
+                        try self.addToken(.EQUAL, .none);
+                        _ = self.prev();
+                    }
                 },
                 '>' => {
                     _ = advance(self);
-                    try addToken(
-                        self,
-                        if (match(self, '=')) .GREATER_EQUAL else .GREATER,
-                        .none,
-                    );
+
+                    if (match(self, '=')) {
+                        try self.addToken(.GREATER_EQUAL, .none);
+                    } else {
+                        try self.addToken(.GREATER, .none);
+                        _ = self.prev();
+                    }
                 },
                 '<' => {
                     _ = advance(self);
@@ -182,7 +185,7 @@ pub const Lexer = struct {
             return;
         }
         const token_type = getKeywordType(text) orelse .IDENTIFIER;
-        try addToken(self, token_type, .{ .ident = text });
+        try addToken(self, token_type, .{ .identifier = text });
     }
 
     fn matchMultiWordKeyword(self: *Lexer, first_word: []const u8) !?TokenType {
@@ -253,6 +256,15 @@ pub const Lexer = struct {
         }
         const c = self.source[self.current];
         self.current += 1;
+        return c;
+    }
+
+    fn prev(self: *Lexer) u8 {
+        if (self.current == 0) {
+            return 0;
+        }
+        const c = self.source[self.current];
+        self.current -= 1;
         return c;
     }
 
