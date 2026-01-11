@@ -51,7 +51,6 @@ pub const Parser = struct {
             if (self.parseStatement()) |stmt| {
                 try statements.append(aa, stmt);
             }
-            advance(self);
         }
 
         // TODO: add check that last token is .KATAPUSAN
@@ -146,8 +145,6 @@ pub const Parser = struct {
                 self.advance();
                 continue;
             }
-            // break;
-            // self.advance();
         }
 
         const res = self.createNode(.{ .var_decl = .{
@@ -156,8 +153,6 @@ pub const Parser = struct {
             .inits = inits.items,
             .name_count = names.items.len,
         } }) catch return null;
-
-        // ast.printAstNode(res, 0);
 
         return res;
     }
@@ -169,15 +164,6 @@ pub const Parser = struct {
             return null;
         }
 
-        // 2) expect identifier or string
-        //      if .AMPERSAND
-        //          expect identifier or string
-        // 3) while not .NEWLINE
-        //      - parse expr
-        //      - if .AMPERSAND
-        //              then advance()
-
-        // IPAKITA: "Num: " & n & ", Char: " & c & ", Bool: " & b & ", Float: " & f
         const aa = self.arena.allocator();
         var exprs: std.ArrayList(*AstNode) = .empty;
 
@@ -202,8 +188,6 @@ pub const Parser = struct {
                 .expressions = exprs.items,
             },
         }) catch return null;
-
-        ast.printAstNode(res, 0);
 
         return res;
     }
