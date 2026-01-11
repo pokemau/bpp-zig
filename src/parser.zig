@@ -7,7 +7,7 @@ const AstNode = @import("./ast.zig").AstNode;
 
 const ast = @import("./ast.zig");
 
-// TODO: fix anyerror
+// TODO: add check for .NEWLINE e.g. expect newline after .SUGOD
 
 pub const Parser = struct {
     arena: std.heap.ArenaAllocator,
@@ -48,9 +48,9 @@ pub const Parser = struct {
                 continue;
             }
 
-            const stmt = try parseStatement(self);
-            _ = stmt;
-
+            if (self.parseStatement()) |stmt| {
+                try statements.append(aa, stmt);
+            }
             advance(self);
         }
 
@@ -68,11 +68,14 @@ pub const Parser = struct {
         return self.current == self.tokens.len;
     }
 
-    fn parseStatement(self: *Parser) !*AstNode {
+    fn parseStatement(self: *Parser) ?*AstNode {
         const token = peek(self);
 
+        var res: ?*AstNode = null;
+
         switch (token.type) {
-            .MUGNA => return parseVarDecl(self),
+            .MUGNA => res = self.parseVarDecl(),
+            .IPAKITA => res = self.parsePrintStmt(),
             // .KATAPUSAN => {
             //     while (!self.isAtEnd()) {
             //         self.advance();
@@ -82,6 +85,12 @@ pub const Parser = struct {
             else => {},
         }
 
+        if (res == null) {
+            self.synchronize();
+            return null;
+        }
+        return res;
+
         // TODO:
         // ipakita
         // identifier
@@ -90,14 +99,13 @@ pub const Parser = struct {
         // kung
         // dili
         // katapusan
-
-        return try createNode(self, .{ .literal = .{ .token = peek(self) } });
     }
 
-    fn parseVarDecl(self: *Parser) !*AstNode {
+    fn parseVarDecl(self: *Parser) ?*AstNode {
         self.advance();
 
         print("PARSE VAR DECL\n", .{});
+
         const t = self.peek();
         const d_type = t.type;
 
@@ -107,6 +115,7 @@ pub const Parser = struct {
             },
             else => {
                 print("ERROR: Expected Data Type\n", .{});
+                return null;
             },
         }
 
@@ -117,23 +126,20 @@ pub const Parser = struct {
         while (!self.match(.NEWLINE)) {
             const name_tok = self.peek();
 
-            print("==={}===\n", .{name_tok.type});
-
             if (name_tok.type != .IDENTIFIER) {
-                self.printCurrTok();
                 print("ERROR: EXPECT VAR NAME\n", .{});
-                break;
+                return null;
             }
 
-            try names.append(aa, name_tok);
+            names.append(aa, name_tok) catch return null;
             self.advance();
 
             if (self.match(.EQUAL)) {
                 self.advance();
-                const init_var = try self.parseExpression();
-                try inits.append(aa, init_var);
+                const init_var = self.parseExpression() orelse return null;
+                inits.append(aa, init_var) catch return null;
             } else {
-                try inits.append(aa, null);
+                inits.append(aa, null) catch return null;
             }
 
             if (self.match(.COMMA)) {
@@ -144,24 +150,70 @@ pub const Parser = struct {
             // self.advance();
         }
 
-        const res = try self.createNode(.{ .var_decl = .{
+        const res = self.createNode(.{ .var_decl = .{
             .d_type = d_type,
             .names = names.items,
             .inits = inits.items,
             .name_count = names.items.len,
-        } });
+        } }) catch return null;
+
+        // ast.printAstNode(res, 0);
+
+        return res;
+    }
+
+    fn parsePrintStmt(self: *Parser) ?*AstNode {
+        self.advance();
+
+        if (!self.expect(.COLON)) {
+            return null;
+        }
+
+        // 2) expect identifier or string
+        //      if .AMPERSAND
+        //          expect identifier or string
+        // 3) while not .NEWLINE
+        //      - parse expr
+        //      - if .AMPERSAND
+        //              then advance()
+
+        // IPAKITA: "Num: " & n & ", Char: " & c & ", Bool: " & b & ", Float: " & f
+        const aa = self.arena.allocator();
+        var exprs: std.ArrayList(*AstNode) = .empty;
+
+        while (!self.match(.NEWLINE)) {
+            const expr = self.parseExpression() orelse return null;
+
+            exprs.append(aa, expr) catch return null;
+
+            if (self.match(.AMPERSAND)) {
+                self.advance();
+                continue;
+            }
+        }
+
+        if (exprs.items.len == 0) {
+            print("ERROR: Expected expression after [IPAKITA]\n", .{});
+            return null;
+        }
+
+        const res = self.createNode(.{
+            .print = .{
+                .expressions = exprs.items,
+            },
+        }) catch return null;
 
         ast.printAstNode(res, 0);
 
         return res;
     }
 
-    fn parseExpression(self: *Parser) anyerror!*AstNode {
+    fn parseExpression(self: *Parser) ?*AstNode {
         return self.parseBinary(0);
     }
 
-    fn parseBinary(self: *Parser, min_prec: i32) anyerror!*AstNode {
-        var left = try self.parseUnary();
+    fn parseBinary(self: *Parser, min_prec: i32) ?*AstNode {
+        var left = self.parseUnary() orelse return null;
 
         while (!self.isAtEnd()) {
             const op_token = self.peek();
@@ -170,60 +222,70 @@ pub const Parser = struct {
             if (prec < min_prec) break;
             self.advance();
 
-            const right = try self.parseBinary(prec + 1);
+            const right = self.parseBinary(prec + 1) orelse return null;
 
-            left = try self.createNode(.{ .binary = .{
+            left = self.createNode(.{ .binary = .{
                 .left = left,
                 .operator = op_token,
                 .right = right,
-            } });
+            } }) catch return null;
         }
         return left;
     }
 
-    fn parseUnary(self: *Parser) anyerror!*AstNode {
+    fn parseUnary(self: *Parser) ?*AstNode {
         const token = self.peek();
 
         if (token.type == .MINUS or token.type == .PLUS or token.type == .DILI) {
             self.advance();
-            const right = try self.parseUnary();
+            const right = self.parseUnary() orelse return null;
             return self.createNode(.{
                 .unary = .{
                     .operator = token,
                     .expression = right,
                 },
-            });
+            }) catch return null;
         }
 
         return self.parsePrimary();
     }
 
-    fn parsePrimary(self: *Parser) anyerror!*AstNode {
+    fn parsePrimary(self: *Parser) ?*AstNode {
         const token = self.peek();
 
         switch (token.type) {
             .NUMBER, .STRING, .CHAR, .TRUE, .FALSE => {
                 self.advance();
-                return self.createNode(.{ .literal = .{ .token = token } });
+                return self.createNode(
+                    .{ .literal = .{ .token = token } },
+                ) catch return null;
             },
 
             .IDENTIFIER => {
                 self.advance();
-                return self.createNode(.{ .variable = .{ .name = token } });
+                return self.createNode(
+                    .{ .variable = .{ .name = token } },
+                ) catch return null;
             },
             .LEFT_PAREN => {
                 self.advance();
-                const expr = try self.parseExpression();
-                if (!self.match(.RIGHT_PAREN)) {}
+                const expr = self.parseExpression() orelse return null;
+                if (!self.match(.RIGHT_PAREN)) {
+                    return null;
+                }
                 self.advance();
                 return expr;
             },
             else => {
                 print("Parse Primary\n", .{});
+                return null;
             },
         }
 
-        return try createNode(self, .{ .literal = .{ .token = token } });
+        return createNode(
+            self,
+            .{ .literal = .{ .token = token } },
+        ) catch return null;
     }
 
     fn expect(self: *Parser, t: TokenType) bool {
